@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Asset Uploader</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 0 auto; padding: 16px; background: #fff; color: #111; }
+    h1 { font-size: 22px; }
+    label { display: block; margin: 12px 0 4px; font-weight: 600; }
+    input, select, button { font: inherit; padding: 8px; width: 100%; box-sizing: border-box; }
+    button { background: #111; color: #fff; border: 0; border-radius: 6px; cursor: pointer; margin-top: 16px; }
+    button:disabled { opacity: .5; }
+    table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 14px; }
+    td, th { border-bottom: 1px solid #ddd; padding: 6px; text-align: left; }
+    .ok { color: #0a7d32; }
+    .bad { color: #b00020; }
+    textarea { width: 100%; height: 120px; font-family: monospace; font-size: 12px; margin-top: 8px; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #111; color: #eee; }
+      button { background: #eee; color: #111; }
+      td, th { border-color: #333; }
+      input, select, textarea { background: #222; color: #eee; border: 1px solid #444; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Asset Uploader</h1>
+
+  <label for="pw">Password</label>
+  <input id="pw" type="password" autocomplete="current-password">
+
+  <label for="type">Tipe asset</label>
+  <select id="type">
+    <option value="">Auto (.rbxm = Animation, lainnya = Audio)</option>
+    <option value="Animation">Animation</option>
+    <option value="Audio">Audio</option>
+    <option value="Model">Model</option>
+  </select>
+
+  <label for="files">File (maks 20 per upload)</label>
+  <input id="files" type="file" multiple>
+
+  <button id="go">Upload</button>
+
+  <div id="status"></div>
+  <table id="results" hidden>
+    <thead><tr><th>File</th><th>Tipe</th><th>ID</th><th>Status</th></tr></thead>
+    <tbody></tbody>
+  </table>
+
+  <label>Hasil ID (JSON)</label>
+  <textarea id="json" readonly></textarea>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  let all = [];
+
+  $('go').onclick = async () => {
+    const files = [...$('files').files];
+    if (!files.length) { $('status').textContent = 'Pilih file dulu.'; return; }
+    if (!$('pw').value) { $('status').textContent = 'Isi password dulu.'; return; }
+
+    $('go').disabled = true;
+    const tbody = $('results').querySelector('tbody');
+    $('results').hidden = false;
+
+    for (let i = 0; i < files.length; i += 20) {
+      const chunk = files.slice(i, i + 20);
+      $('status').textContent = `Upload ${i + 1}-${i + chunk.length} dari ${files.length}...`;
+
+      const fd = new FormData();
+      chunk.forEach((f) => fd.append('files', f, f.name));
+      if ($('type').value) fd.append('assetType', $('type').value);
+
+      try {
+        const r = await fetch('/api/upload', {
+          method: 'POST',
+          headers: { 'x-password': $('pw').value },
+          body: fd,
+        });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || r.statusText);
+
+        for (const row of j.results) {
+          all.push(row);
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${row.file}</td><td>${row.type || ''}</td><td>${row.assetId || ''}</td>` +
+            (row.ok ? '<td class="ok">OK</td>' : `<td class="bad">${(row.error || '').slice(0, 120)}</td>`);
+          tbody.appendChild(tr);
+        }
+      } catch (e) {
+        $('status').textContent = 'Gagal: ' + e.message;
+        break;
+      }
+    }
+
+    const map = {};
+    all.filter((r) => r.ok).forEach((r) => { map[r.file] = { id: r.assetId, type: r.type }; });
+    $('json').value = JSON.stringify(map, null, 2);
+    $('status').textContent = `Selesai. ${all.filter((r) => r.ok).length} sukses, ${all.filter((r) => !r.ok).length} gagal.`;
+    $('go').disabled = false;
+  };
+</script>
+</body>
+</html>
